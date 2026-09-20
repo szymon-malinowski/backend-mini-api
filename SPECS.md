@@ -4,9 +4,9 @@
 
 Build a database-backed REST API that meets the requirements in `AGENTS.md`: at least two endpoints, two related entities, security controls, modular code, and documented request/response formats and an entity-relationship diagram.
 
-This document proposes a **User and Post API** because no existing implementation or domain is present. PostgreSQL is required as the only database in development, testing, and production. Other technology choices below are proposed implementation decisions. This is a plan; features described here are not yet implemented.
+This document specifies the **User and Post API** implemented in this repository. PostgreSQL is required as the only database in development, testing, and production. See `README.md` for setup and verification commands, `docs/openapi.yaml` for the API contract, and `docs/security.md` for the security control mapping. The course's exact security checklist still needs to be supplied and reviewed before submission.
 
-## Proposed stack
+## Stack
 
 - Node.js with Express for HTTP routing and middleware.
 - PostgreSQL as the only database for persistent storage, with versioned migrations and parameterized queries. Integration tests must use an isolated PostgreSQL database rather than a substitute database engine.
@@ -155,7 +155,7 @@ Reading or updating a post returns the same shape. PATCH preserves omitted field
 
 ### Pagination
 
-`GET /api/v1/posts?page=1&limit=20` defaults to page 1 and limit 20. Both parameters must be positive integers; limit must not exceed 100. Sort by `created_at DESC, id DESC`. An empty or out-of-range page returns an empty array.
+`GET /api/v1/posts?page=1&limit=20` defaults to page 1 and limit 20. Both parameters must be positive integers; page must not exceed 2,147,483,647 and limit must not exceed 100. Unknown or repeated query parameters are rejected. Sort by `created_at DESC, id DESC`. An empty or out-of-range page returns an empty array.
 
 ```json
 {

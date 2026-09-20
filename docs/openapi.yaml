@@ -1,0 +1,330 @@
+openapi: 3.0.3
+info:
+  title: Mini User and Post API
+  version: 1.0.0
+  description: |
+    PostgreSQL-backed public posts with session authentication. Fetch a CSRF token
+    before registration or login, retain cookies, and fetch a new token after login.
+    All POST, PATCH, and DELETE operations require X-CSRF-Token.
+    Bodies must be UTF-8 JSON, uncompressed, at most 64 KiB; unknown fields are rejected.
+    All responses are non-cacheable. Posts contain plain text; clients must escape it when rendering.
+    Errors use a common envelope: 400 validation/JSON, 401 authentication, 403 CSRF/origin/ownership/HTTPS,
+    404 missing resource, 409 duplicate email, 413 oversized payload, 415 content type,
+    429 rate limit (Retry-After in seconds), and 500 unexpected failure.
+servers:
+  - url: http://localhost:3000/api/v1
+tags:
+  - name: Authentication
+  - name: Users
+  - name: Posts
+paths:
+  /auth/csrf:
+    get:
+      tags: [Authentication]
+      operationId: getCsrfToken
+      summary: Create or retrieve a session-bound CSRF token
+      description: Creates an anonymous session when needed. Retain the mini.sid cookie.
+      responses:
+        '200':
+          description: CSRF token
+          headers:
+            Set-Cookie:
+              description: HttpOnly, SameSite=Lax session cookie; Secure in production.
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [csrfToken]
+                    properties:
+                      csrfToken: { type: string, pattern: '^[a-f0-9]{64}$' }
+        default: { $ref: '#/components/responses/Error' }
+  /auth/register:
+    post:
+      tags: [Authentication]
+      operationId: register
+      summary: Register a user without logging in
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Registration' }
+      responses:
+        '201': { $ref: '#/components/responses/User' }
+        '409': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+  /auth/login:
+    post:
+      tags: [Authentication]
+      operationId: login
+      summary: Authenticate and rotate the session ID and CSRF token
+      description: Fetch /auth/csrf again after successful login. Session expiry is 24 hours, not sliding.
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Login' }
+      responses:
+        '200': { $ref: '#/components/responses/User' }
+        '401': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      operationId: logout
+      summary: Invalidate the authenticated session and clear its cookie
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      responses:
+        '204': { description: Logged out; no response body }
+        default: { $ref: '#/components/responses/Error' }
+  /users/me:
+    get:
+      tags: [Users]
+      operationId: getOwnProfile
+      summary: Read the authenticated user's profile
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/User' }
+        default: { $ref: '#/components/responses/Error' }
+  /posts:
+    get:
+      tags: [Posts]
+      operationId: listPosts
+      summary: List public posts, newest first with ID as the tie breaker
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, maximum: 2147483647, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Paginated posts, including an empty array for an out-of-range page
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Post' }
+                  pagination:
+                    type: object
+                    required: [page, limit, total]
+                    properties:
+                      page: { type: integer, minimum: 1 }
+                      limit: { type: integer, minimum: 1, maximum: 100 }
+                      total: { type: integer, minimum: 0 }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Posts]
+      operationId: createPost
+      summary: Create a public post owned by the authenticated user
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PostInput' }
+      responses:
+        '201':
+          description: Post created
+          headers:
+            Location:
+              description: Relative URL of the created post
+              schema: { type: string, example: /api/v1/posts/61801b0f-87ab-44ef-ae62-d7a388a08741 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PostEnvelope' }
+        default: { $ref: '#/components/responses/Error' }
+  /posts/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Posts]
+      operationId: getPost
+      summary: Read a public post
+      responses:
+        '200': { $ref: '#/components/responses/Post' }
+        '404': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Posts]
+      operationId: updatePost
+      summary: Update a post as its author
+      description: At least one field is required. Omitted fields remain unchanged; null values are rejected.
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                title: { $ref: '#/components/schemas/Title' }
+                body: { $ref: '#/components/schemas/Body' }
+      responses:
+        '200': { $ref: '#/components/responses/Post' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Posts]
+      operationId: deletePost
+      summary: Delete a post as its author
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      responses:
+        '204': { description: Post deleted; no response body }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: mini.sid
+      description: Opaque signed session ID. Anonymous sessions suffice for registration and login.
+    csrfToken:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: Token returned by /auth/csrf for the current session.
+  schemas:
+    Email:
+      type: string
+      format: email
+      maxLength: 254
+      description: Trimmed and lowercased before validation and storage.
+      example: alex@example.com
+    Password:
+      type: string
+      format: password
+      minLength: 15
+      maxLength: 128
+      description: Preserved exactly; never trimmed or truncated.
+      writeOnly: true
+    Login:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { $ref: '#/components/schemas/Email' }
+        password: { $ref: '#/components/schemas/Password' }
+    Registration:
+      type: object
+      additionalProperties: false
+      required: [email, displayName, password]
+      properties:
+        email: { $ref: '#/components/schemas/Email' }
+        password: { $ref: '#/components/schemas/Password' }
+        displayName: { type: string, minLength: 1, maxLength: 80, description: Trimmed before validation. }
+    Title:
+      type: string
+      minLength: 1
+      maxLength: 200
+      description: Trimmed before validation; plain text.
+    Body:
+      type: string
+      minLength: 1
+      maxLength: 10000
+      pattern: '\S'
+      description: Plain text; must contain a non-whitespace character.
+    PostInput:
+      type: object
+      additionalProperties: false
+      required: [title, body]
+      properties:
+        title: { $ref: '#/components/schemas/Title' }
+        body: { $ref: '#/components/schemas/Body' }
+    User:
+      type: object
+      additionalProperties: false
+      required: [id, email, displayName, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        email: { $ref: '#/components/schemas/Email' }
+        displayName: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Post:
+      type: object
+      additionalProperties: false
+      required: [id, title, body, author, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        title: { $ref: '#/components/schemas/Title' }
+        body: { $ref: '#/components/schemas/Body' }
+        author:
+          type: object
+          additionalProperties: false
+          required: [id, displayName]
+          properties:
+            id: { type: string, format: uuid }
+            displayName: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    PostEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/Post' }
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: VALIDATION_ERROR }
+            message: { type: string, example: Request validation failed. }
+            details:
+              type: array
+              items:
+                type: object
+                required: [field, message]
+                properties:
+                  field: { type: string }
+                  message: { type: string }
+  responses:
+    Error:
+      description: Request failed; see status-code meanings in the API description.
+      headers:
+        Retry-After:
+          description: Present on 429 responses; seconds until the rate-limit window resets.
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    User:
+      description: Own user profile without password/hash
+      headers:
+        Set-Cookie:
+          description: Present on successful login to replace the session cookie.
+          schema: { type: string }
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data: { $ref: '#/components/schemas/User' }
+    Post:
+      description: Public post with public author fields
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PostEnvelope' }
