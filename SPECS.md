@@ -6,3 +6,4 @@
 - CRUD methods
 - Zod
 - Clerk
+- Folders: src, middleware, controllers
