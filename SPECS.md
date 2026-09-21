@@ -4,4 +4,5 @@
 - express
 - PostgreSQL
 - CRUD methods
-- zod
+- Zod
+- Clerk

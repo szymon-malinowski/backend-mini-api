@@ -10,3 +10,4 @@ In this mini project, you are required to implement an API with **at least 2 end
 - Keep it simple, so that a five year old would understand the code.
 - No tests.
 - Do not modify SPECS.md, or AGENTS.md.
+- Do not run any scripts.
