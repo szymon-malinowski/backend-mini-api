@@ -7,4 +7,5 @@
 - CORS
 - Zod
 - Clerk
+- Routes
 - Folders: src, middleware, controllers
