@@ -4,6 +4,7 @@
 - express
 - PostgreSQL
 - CRUD methods
+- CORS
 - Zod
 - Clerk
 - Folders: src, middleware, controllers
