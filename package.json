@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node --env-file=.env server.js"
   },
   "dependencies": {
-    "@clerk/express": "^1.7.28",
+    "@clerk/express": "^1.7.83",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "helmet": "^8.1.0",
