@@ -1,38 +1,67 @@
 # Mini Post API
 
-This is a small API for writing posts. PostgreSQL stores users, posts, and session records. Clerk tells the API who is signed in.
+A small Express API for creating and managing posts. PostgreSQL stores users, posts, and Clerk session records. Clerk identifies the signed-in user.
 
-## Files
+## Requirements
 
-| File           | Job                                    |
-| -------------- | -------------------------------------- |
-| `server.js`    | The whole API in one easy-to-read file |
-| `database.sql` | Creates the PostgreSQL tables          |
-| `.env.example` | Shows the settings the API needs       |
+- Node.js 20 or newer
+- PostgreSQL
+- A Clerk application
 
-The code is split into small folders: `controllers/` handles requests, `middleware/` checks safety and sign-in, and `src/db.js` connects to PostgreSQL.
+## Setup
 
-## Database
+1. Install dependencies:
 
-```text
-One user can have many posts.
-One user can have many sessions.
+```bash
+npm install
 ```
 
-`posts.user_id` connects every post to its owner. `sessions` keeps a PostgreSQL record of each Clerk session used by the API.
+2. Create a PostgreSQL database and run [`database.sql`](database.sql).
+
+3. Copy [`.env.example`](.env.example) to `.env` and set these values:
+
+| Variable                | Description                                                          |
+| ----------------------- | -------------------------------------------------------------------- |
+| `DATABASE_URL`          | PostgreSQL connection string                                         |
+| `CLERK_SECRET_KEY`      | Secret key from Clerk                                                |
+| `CLERK_PUBLISHABLE_KEY` | Publishable Clerk key for the client                                 |
+| `ALLOWED_ORIGIN`        | Frontend origin allowed by CORS, for example `http://localhost:3000` |
+| `PORT`                  | API port, defaulting to `3000`                                       |
+
+4. Start the API:
+
+```bash
+npm start
+```
+
+The API is available at `http://localhost:3000` unless another `PORT` is configured.
+
+## Tests
+
+Run the Jest test suite with:
+
+```bash
+npm test
+```
+
+The tests cover security origin checks and public error responses without needing a running PostgreSQL or Clerk instance.
 
 ## Endpoints
 
-| Method | URL              | What it does                 |
-| ------ | ---------------- | ---------------------------- |
-| GET    | `/api/posts`     | Show all posts               |
-| GET    | `/api/posts/:id` | Show one post                |
-| POST   | `/api/posts`     | Create a post when signed in |
-| PATCH  | `/api/posts/:id` | Change your own post         |
-| DELETE | `/api/posts/:id` | Delete your own post         |
-| GET    | `/api/me`        | Show the signed-in user      |
+| Method | URL              | Auth  | Description                             |
+| ------ | ---------------- | ----- | --------------------------------------- |
+| GET    | `/api/posts`     | No    | List posts, newest first                |
+| GET    | `/api/posts/:id` | No    | Get one post                            |
+| POST   | `/api/posts`     | Clerk | Create a post                           |
+| PATCH  | `/api/posts/:id` | Clerk | Update your own post                    |
+| DELETE | `/api/posts/:id` | Clerk | Delete your own post                    |
+| GET    | `/api/me`        | Clerk | Get the current user and session expiry |
 
-To create a post, send JSON like this:
+Authenticated requests must include the Clerk session credentials. Create and update requests use JSON.
+
+### Create a post
+
+`POST /api/posts`
 
 ```json
 {
@@ -41,16 +70,25 @@ To create a post, send JSON like this:
 }
 ```
 
-## Setup
+Both fields are required when creating a post. `title` is limited to 100 characters and `body` to 5,000 characters. Updates may include `title`, `body`, or both.
 
-Create a PostgreSQL database and apply `database.sql`. Copy `.env.example` to `.env`, then add your PostgreSQL URL, Clerk keys, allowed frontend address, and port.
+## Project structure
 
-## Safety
+| Path           | Responsibility                               |
+| -------------- | -------------------------------------------- |
+| `server.js`    | Creates the Express app and registers routes |
+| `controllers/` | Handles users and posts                      |
+| `middleware/`  | Authentication, security, and error handling |
+| `src/db.js`    | Creates the PostgreSQL connection pool       |
+| `database.sql` | Defines users, posts, sessions, and indexes  |
 
-- Clerk middleware checks who is signed in.
-- A user can only change or delete their own post.
-- Zod checks post input before it reaches the database.
-- PostgreSQL placeholders keep SQL input safe.
+## Security
+
+- Clerk middleware protects authenticated routes.
+- Users can only update or delete their own posts.
+- Zod validates request bodies and UUID route parameters.
+- Parameterized PostgreSQL queries protect against SQL injection.
 - Helmet adds security headers.
-- Only the website in `ALLOWED_ORIGIN` can make browser requests.
-- Error replies do not reveal database details.
+- CORS allows only `ALLOWED_ORIGIN` and credentials.
+- JSON requests are limited to 20 KB.
+- Error responses avoid exposing database details.

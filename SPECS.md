@@ -8,4 +8,5 @@
 - Zod
 - Clerk
 - Routes
+- Jest
 - Folders: src, middleware, controllers
